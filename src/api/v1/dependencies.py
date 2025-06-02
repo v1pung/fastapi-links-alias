@@ -17,7 +17,12 @@ def init_dependencies(app: FastAPI):
 
 
 async def get_pool() -> Pool:
-    """Возвращает пул соединений из app.state.pool."""
+    """Возвращает пул соединений из app.state.pool.
+
+    В текущей реализации это костыль, так как при обращении к оригинальному
+    app падает ошибка о циклических импортах. Поэтому инициализируем копию app
+    и обращаемся к ней.
+    """
     if _app is None or not hasattr(_app.state, "pool"):
         raise RuntimeError("Application pool is not initialized")
     return _app.state.pool
