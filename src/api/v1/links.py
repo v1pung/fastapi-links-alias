@@ -26,18 +26,7 @@ async def get_links(
     """Получение списка ссылок с пагинацией и фильтрацией по активным ссылкам."""
     try:
         links = await link_service.get_all_links(is_active, limit, offset)
-        return [
-            {
-                "id": link["id"],
-                "original_url": link["original_url"],
-                "short_url": f"http://localhost:8000/{link['short_url']}",
-                "is_active": link["is_active"],
-                "created_at": link["created_at"],
-                "expires_at": link["expires_at"],
-                "click_count": link["click_count"],
-            }
-            for link in links
-        ]
+        return [LinkResponse.model_validate(link) for link in links]
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

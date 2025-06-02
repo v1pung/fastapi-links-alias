@@ -28,7 +28,14 @@ class LinkService:
     async def get_all_links(
         self, is_active: Optional[bool], limit: int, offset: int
     ) -> List[dict]:
-        return await self.link_repository.get_all(is_active, limit, offset)
+        links = await self.link_repository.get_all(is_active, limit, offset)
+        return [
+            {
+                **link,
+                "short_url": f"http://localhost:8000/{link['short_url']}"
+            }
+            for link in links
+        ]
 
     async def deactivate_link(self, short_url: str) -> str:
         success = await self.link_repository.deactivate(short_url)
