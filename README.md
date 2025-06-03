@@ -23,7 +23,7 @@
 например Firefox, curl или Postman.
 
 ## Технологии
-Стек: Python, FastAPI, PostgreSQL, Docker, Pydantic, asyncpg.
+Стек: Python, FastAPI, PostgreSQL, Docker, Pydantic, SQLAlchemy, asyncpg.
   
 ## Использование
 ### Требования
