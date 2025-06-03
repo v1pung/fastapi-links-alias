@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Index
 from sqlalchemy.sql import func
 from src.db import Base  # Изменён импорт
 
@@ -13,3 +13,4 @@ class Link(Base):
     created_at = Column(DateTime, server_default=func.now())
     expires_at = Column(DateTime, nullable=True)
     click_count = Column(Integer, default=0)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)

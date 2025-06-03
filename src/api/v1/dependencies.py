@@ -29,9 +29,9 @@ security = HTTPBasic()
 
 
 async def get_current_user(
-        credentials: Annotated[HTTPBasicCredentials, Depends(security)],
-        auth_service: AuthService = Depends(get_auth_service)
-) -> str:
+    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
+    auth_service: AuthService = Depends(get_auth_service)
+) -> dict:
     try:
         return await auth_service.authenticate_user(credentials.username, credentials.password)
     except ValueError as e:

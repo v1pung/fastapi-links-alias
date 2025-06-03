@@ -22,10 +22,11 @@ async def get_links(
     limit: int = 10,
     offset: int = 0,
     link_service: LinkService = Depends(get_link_service),
+    user: dict = Depends(get_current_user)
 ):
     """Получение списка ссылок с пагинацией и фильтрацией по активным ссылкам."""
     try:
-        links = await link_service.get_all_links(is_active, limit, offset)
+        links = await link_service.get_all_links(is_active, limit, offset, user)
         return [LinkResponse.model_validate(link) for link in links]
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -38,10 +39,11 @@ async def create_short_url(
     creds: Annotated[HTTPBasicCredentials, Depends(get_current_user)],
     request: CreateShortUrlRequest,
     link_service: LinkService = Depends(get_link_service),
+    user: dict = Depends(get_current_user)
 ):
     """Создание короткой ссылки."""
     try:
-        short_url = await link_service.create_short_url(str(request.original_url))
+        short_url = await link_service.create_short_url(str(request.original_url), user)
         return {"short_url": short_url}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -54,11 +56,12 @@ async def deactivate_url(
     creds: Annotated[HTTPBasicCredentials, Depends(get_current_user)],
     short_url: str,
     link_service: LinkService = Depends(get_link_service),
+    user: dict = Depends(get_current_user)
 ):
     """Деактивация короткой ссылки."""
     try:
-        message = await link_service.deactivate_link(short_url)
-        return {"message": message}
+        await link_service.deactivate_link(short_url, user)
+        return {"message": "Link deactivated"}
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -68,10 +71,11 @@ async def get_all_stats(
     creds: Annotated[HTTPBasicCredentials, Depends(get_current_user)],
     is_active: Optional[bool] = None,
     link_service: LinkService = Depends(get_link_service),
+    user: dict = Depends(get_current_user)
 ):
     """Получение статистики по всем коротким ссылкам с сортировкой по количеству переходов за день."""
     try:
-        return await link_service.get_stats(is_active)
+        return await link_service.get_stats(is_active, user)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -84,7 +88,7 @@ async def redirect_url(
 ):
     """Редирект на оригинальную ссылку"""
     try:
-        link = await link_service.get_link_by_short_url(short_url)
+        link = await link_service.get_by_short_url_public(short_url)
         await link_service.log_click(short_url)
 
         # Избежание ошибки CORS при обращении с /docs
