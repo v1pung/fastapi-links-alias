@@ -14,6 +14,8 @@ class CreateShortUrlResponse(BaseModel):
 class DeactivateLinkResponse(BaseModel):
     message: str
 
+    model_config = ConfigDict()
+
 
 class LinkResponse(BaseModel):
     id: int
@@ -23,5 +25,6 @@ class LinkResponse(BaseModel):
     created_at: datetime
     expires_at: Optional[datetime]
     click_count: int
+    user_id: int
 
     model_config = ConfigDict(from_attributes=True)

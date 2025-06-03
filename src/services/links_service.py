@@ -55,11 +55,11 @@ class LinkService:
             for link in links
         ]
 
-    async def deactivate_link(self, short_url: str, user: dict) -> str:
+    async def deactivate_link(self, short_url: str, user: dict) -> dict:
         success = await self.link_repository.deactivate(short_url, user["id"])
         if not success:
             raise ValueError("Link not found or already deactivated")
-        return f"Link {short_url} deactivated"
+        return {"message": f"Link {short_url} deactivated"}
 
     async def log_click(self, short_url: str) -> None:
         link = await self.get_by_short_url_public(short_url)

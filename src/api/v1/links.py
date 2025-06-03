@@ -26,14 +26,17 @@ async def get_links(
 ):
     """Получение списка ссылок с пагинацией и фильтрацией по активным ссылкам."""
     try:
+        if limit < 0 or offset < 0:
+            raise ValueError("Invalid pagination parameters")
         links = await link_service.get_all_links(is_active, limit, offset, user)
         return [LinkResponse.model_validate(link) for link in links]
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        status_code = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.post(
-    "/create_short_url", tags=["Private"], response_model=CreateShortUrlResponse
+    "/create_short_url", tags=["Private"], response_model=CreateShortUrlResponse, status_code=status.HTTP_201_CREATED
 )
 async def create_short_url(
     creds: Annotated[HTTPBasicCredentials, Depends(get_current_user)],
@@ -43,10 +46,14 @@ async def create_short_url(
 ):
     """Создание короткой ссылки."""
     try:
-        short_url = await link_service.create_short_url(str(request.original_url), user)
-        return {"short_url": short_url}
+        link = await link_service.create_short_url(str(request.original_url), user)
+        return CreateShortUrlResponse(
+            short_url=link,
+            headers={"Location": f"/{link}"}
+        )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        status_code = 409 if "already exists" in str(e).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.patch(
@@ -60,8 +67,8 @@ async def deactivate_url(
 ):
     """Деактивация короткой ссылки."""
     try:
-        await link_service.deactivate_link(short_url, user)
-        return {"message": "Link deactivated"}
+        response = await link_service.deactivate_link(short_url, user)
+        return DeactivateLinkResponse.model_validate(response)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -77,7 +84,8 @@ async def get_all_stats(
     try:
         return await link_service.get_stats(is_active, user)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        status_code = 404 if "not found" in str(e).lower() else 400
+        raise HTTPException(status_code=status_code, detail=str(e))
 
 
 @router.get("/{short_url}", tags=["Public"])
@@ -98,5 +106,5 @@ async def redirect_url(
             url=link["original_url"], status_code=status.HTTP_307_TEMPORARY_REDIRECT
         )
     except ValueError as e:
-        status_code = 404 if "not found" in str(e).lower() else 403
+        status_code = 404 if "not found" in str(e).lower() else 410
         raise HTTPException(status_code=status_code, detail=str(e))
