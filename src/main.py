@@ -1,19 +1,15 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from src.db.database import create_pool, init_db
-from src.api.v1.dependencies import init_dependencies
+from src.db.database import init_db, engine
 from src.api.v1 import main_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения."""
-    app.state.pool = await create_pool()
-    await init_db(app.state.pool)
-    init_dependencies(app)
+    await init_db()
     yield
-    if app.state.pool:
-        await app.state.pool.close()
+    await engine.dispose()
 
 
 app = FastAPI(

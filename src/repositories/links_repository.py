@@ -1,88 +1,100 @@
-import asyncpg
 from typing import List, Optional
-from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, func, case
+from sqlalchemy.exc import IntegrityError
 from src.repositories.interfaces.links_repository import LinkRepositoryInterface
+from src.models import Link, Click
+from datetime import datetime, timedelta
 
 
 class LinkRepository(LinkRepositoryInterface):
-    def __init__(self, pool: asyncpg.Pool):
-        self.pool = pool
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
-    async def create(
-        self, original_url: str, short_url: str, expires_at: datetime
-    ) -> dict:
-        async with self.pool.acquire() as conn:
-            try:
-                record = await conn.fetchrow(
-                    """
-                    INSERT INTO links (original_url, short_url, expires_at, click_count)
-                    VALUES ($1, $2, $3, 0)
-                    RETURNING id, original_url, short_url, is_active, created_at, expires_at, click_count
-                    """,
-                    original_url,
-                    short_url,
-                    expires_at,
-                )
-                return dict(record)
-            except asyncpg.UniqueViolationError:
-                raise ValueError("Short URL already exists")
+    async def create(self, original_url: str, short_url: str, expires_at: datetime) -> dict:
+        link = Link(
+            original_url=original_url,
+            short_url=short_url,
+            expires_at=expires_at,
+            click_count=0
+        )
+        try:
+            self.session.add(link)
+            await self.session.commit()
+            await self.session.refresh(link)
+            return link.__dict__
+        except IntegrityError:
+            await self.session.rollback()
+            raise ValueError("Short URL already exists")
 
     async def get_by_short_url(self, short_url: str) -> dict:
-        async with self.pool.acquire() as conn:
-            record = await conn.fetchrow(
-                """
-                SELECT id, original_url, short_url, is_active, created_at, expires_at, click_count
-                FROM links
-                WHERE short_url = $1
-                """,
-                short_url,
-            )
-            return dict(record) if record else None
+        result = await self.session.execute(
+            select(Link).where(Link.short_url == short_url)
+        )
+        link = result.scalars().first()
+        return link.__dict__ if link else None
 
-    async def get_all(
-        self, is_active: Optional[bool], limit: int, offset: int
-    ) -> List[dict]:
-        query = """
-            SELECT id, original_url, short_url, is_active, created_at, expires_at, click_count
-            FROM links
-            WHERE ($1::boolean IS NULL OR is_active = $1)
-            ORDER BY created_at DESC
-            LIMIT $2 OFFSET $3
-        """
-        async with self.pool.acquire() as conn:
-            records = await conn.fetch(query, is_active, limit, offset)
-            return [dict(record) for record in records]
+    async def get_all(self, is_active: Optional[bool], limit: int, offset: int) -> List[dict]:
+        query = select(Link)
+        if is_active is not None:
+            query = query.where(Link.is_active == is_active)
+        query = query.order_by(Link.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(query)
+        links = result.scalars().all()
+        return [link.__dict__ for link in links]
 
     async def deactivate(self, short_url: str) -> bool:
-        async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE links SET is_active = FALSE WHERE short_url = $1 AND is_active = TRUE",
-                short_url,
-            )
-            return result != "UPDATE 0"
+        result = await self.session.execute(
+            update(Link)
+            .where(Link.short_url == short_url, Link.is_active == True)
+            .values(is_active=False)
+        )
+        await self.session.commit()
+        return result.rowcount > 0
 
     async def log_click(self, link_id: int) -> None:
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute("INSERT INTO clicks (link_id) VALUES ($1)", link_id)
-                await conn.execute(
-                    "UPDATE links SET click_count = click_count + 1 WHERE id = $1",
-                    link_id,
-                )
+        click = Click(link_id=link_id)
+        self.session.add(click)
+        await self.session.execute(
+            update(Link)
+            .where(Link.id == link_id)
+            .values(click_count=Link.click_count + 1)
+        )
+        await self.session.commit()
 
     async def get_stats(self, is_active: Optional[bool]) -> List[dict]:
-        query = """
-            SELECT
-                l.short_url,
-                l.original_url,
-                COUNT(CASE WHEN c.clicked_at >= NOW() - INTERVAL '1 hour' THEN 1 END) AS last_hour_clicks,
-                COUNT(CASE WHEN c.clicked_at >= NOW() - INTERVAL '24 hours' THEN 1 END) AS last_day_clicks
-            FROM links l
-            LEFT JOIN clicks c ON l.id = c.link_id
-            WHERE ($1::boolean IS NULL OR l.is_active = $1)
-            GROUP BY l.id, l.short_url, l.original_url
-            ORDER BY last_day_clicks DESC, last_hour_clicks DESC
-        """
-        async with self.pool.acquire() as conn:
-            records = await conn.fetch(query, is_active)
-            return [dict(record) for record in records]
+        last_hour_clicks = func.sum(
+            case(
+                (Click.clicked_at >= func.now() - timedelta(hours=1), 1),
+                else_=0
+            )
+        ).label("last_hour_clicks")
+
+        last_day_clicks = func.sum(
+            case(
+                (Click.clicked_at >= func.now() - timedelta(hours=24), 1),
+                else_=0
+            )
+        ).label("last_day_clicks")
+
+        query = (
+            select(
+                Link.short_url,
+                Link.original_url,
+                last_hour_clicks,
+                last_day_clicks
+            )
+            .outerjoin(Click, Link.id == Click.link_id)
+            .group_by(Link.id, Link.short_url, Link.original_url)
+        )
+
+        if is_active is not None:
+            query = query.where(Link.is_active == is_active)
+
+        query = query.order_by(
+            last_day_clicks.desc(),
+            last_hour_clicks.desc()
+        )
+
+        result = await self.session.execute(query)
+        return [dict(row._mapping) for row in result]

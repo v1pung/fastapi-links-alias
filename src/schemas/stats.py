@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class StatsResponse(BaseModel):
@@ -6,3 +6,5 @@ class StatsResponse(BaseModel):
     orig_link: str
     last_hour_clicks: int
     last_day_clicks: int
+
+    model_config = ConfigDict(from_attributes=True)

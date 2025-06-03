@@ -1,31 +1,28 @@
-import asyncpg
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from src.repositories.interfaces.users_repository import UserRepositoryInterface
+from src.models import User
 
 
 class UserRepository(UserRepositoryInterface):
-    def __init__(self, pool: asyncpg.Pool):
-        self.pool = pool
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
     async def create(self, username: str, password_hash: str) -> dict:
-        async with self.pool.acquire() as conn:
-            try:
-                record = await conn.fetchrow(
-                    """
-                    INSERT INTO users (username, password_hash)
-                    VALUES ($1, $2)
-                    RETURNING id, username, password_hash
-                    """,
-                    username,
-                    password_hash,
-                )
-                return dict(record)
-            except asyncpg.UniqueViolationError:
-                raise ValueError(f"User {username} already exists")
+        user = User(username=username, password_hash=password_hash)
+        try:
+            self.session.add(user)
+            await self.session.commit()
+            await self.session.refresh(user)
+            return user.__dict__
+        except IntegrityError:
+            await self.session.rollback()
+            raise ValueError(f"User {username} already exists")
 
     async def get_by_username(self, username: str) -> dict:
-        async with self.pool.acquire() as conn:
-            record = await conn.fetchrow(
-                "SELECT id, username, password_hash FROM users WHERE username = $1",
-                username,
-            )
-            return dict(record) if record else None
+        result = await self.session.execute(
+            select(User).where(User.username == username)
+        )
+        user = result.scalars().first()
+        return user.__dict__ if user else None
