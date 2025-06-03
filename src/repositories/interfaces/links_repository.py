@@ -31,3 +31,7 @@ class LinkRepositoryInterface(ABC):
     @abstractmethod
     async def get_stats(self, is_active: Optional[bool]) -> List[dict]:
         raise NotImplementedError
+
+    @abstractmethod
+    async def update_expired_links(self) -> int:
+        pass

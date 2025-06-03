@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, case
+from sqlalchemy import select, update, func, case, and_
 from sqlalchemy.exc import IntegrityError
 from src.repositories.interfaces.links_repository import LinkRepositoryInterface
 from src.models import Link, Click
@@ -98,3 +98,13 @@ class LinkRepository(LinkRepositoryInterface):
 
         result = await self.session.execute(query)
         return [dict(row._mapping) for row in result]
+
+    async def update_expired_links(self) -> int:
+        """Обновляет is_active=False для просроченных ссылок."""
+        result = await self.session.execute(
+            update(Link)
+            .where(and_(Link.is_active == True, Link.expires_at < datetime.now()))
+            .values(is_active=False)
+        )
+        await self.session.commit()
+        return result.rowcount

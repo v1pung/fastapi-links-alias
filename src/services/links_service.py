@@ -28,6 +28,8 @@ class LinkService:
     async def get_all_links(
         self, is_active: Optional[bool], limit: int, offset: int
     ) -> List[dict]:
+        await self.link_repository.update_expired_links()
+
         links = await self.link_repository.get_all(is_active, limit, offset)
         return [
             {
@@ -50,6 +52,7 @@ class LinkService:
         await self.link_repository.log_click(link["id"])
 
     async def get_stats(self, is_active: Optional[bool]) -> List[dict]:
+        await self.link_repository.update_expired_links()
         stats = await self.link_repository.get_stats(is_active)
         return [
             {
